@@ -5,6 +5,50 @@
   const inspect = document.getElementById('inspect');
   let frames = [], fps = 30, first = 0, last = 0, start = 0, end = 0, ready = false, hls;
   let wantsPlayback = false, playRequest = 0;
+  let days = [], dayButtons = [], selectedDay = 0, playlistEnd = 0, dayMetadata = [];
+  const playlist = document.getElementById('dayPlaylist');
+  const dayHeading = document.getElementById('dayHeading');
+  const playlistCount = document.getElementById('playlistCount');
+  function selectDay(number, seek = true) {
+    selectedDay = number;
+    const day = days[number];
+    first = day.first; last = day.last; start = day.start; end = day.end;
+    el.scrubber.min = first; el.scrubber.max = last;
+    el.rangeStart.textContent = frames[first][0].slice(11);
+    el.rangeEnd.textContent = frames[last][0].slice(11);
+    dayHeading.textContent = day.date;
+    dayButtons.forEach((button, i) => {
+      button.classList.toggle('current', i === number);
+      if (i === number) button.setAttribute('aria-current', 'true');
+      else button.removeAttribute('aria-current');
+    });
+    dayButtons[number]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (seek) video.currentTime = start;
+    status(`Day ${number + 1} of ${days.length} · ${day.count} frames · next day plays automatically`);
+  }
+  function renderPlaylist() {
+    playlist.replaceChildren();
+    dayButtons = days.map((day, number) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'day-item';
+      const title = document.createElement('strong');
+      title.textContent = day.date;
+      const detail = document.createElement('span');
+      detail.textContent = `${day.count.toLocaleString()} frames · ${(day.end - day.start).toFixed(1)}s at 1×`;
+      button.append(title, detail);
+      button.addEventListener('click', () => {
+        const resume = wantsPlayback;
+        stopPlayback();
+        selectDay(number);
+        update();
+        if (resume) play();
+      });
+      playlist.append(button);
+      return button;
+    });
+    playlistCount.textContent = `${days.length} daily clips`;
+  }
   function stopPlayback() { wantsPlayback = false; playRequest++; video.pause(); button(); }
   function bufferedAhead() {
     for (let i = 0; i < video.buffered.length; i++) {
@@ -16,7 +60,7 @@
   function waitForBuffer(request) {
     if (!hls) return Promise.resolve(); // Safari manages its native HLS buffer.
     return new Promise((resolve, reject) => {
-      const target = Math.max(0, Math.min(60, 12 * video.playbackRate, end - video.currentTime - 0.1));
+      const target = Math.max(0, Math.min(60, 12 * video.playbackRate, playlistEnd - video.currentTime - 0.1));
       const cleanup = () => { clearInterval(checkTimer); clearTimeout(timeout); };
       const check = () => {
         if (request !== playRequest || !wantsPlayback) { cleanup(); resolve(); return; }
@@ -49,13 +93,16 @@
   }
   function update() {
     if (!ready) return;
+    // Daily clips share one HLS timeline: crossing days does not reload the player.
+    while (selectedDay + 1 < days.length && video.currentTime >= days[selectedDay + 1].start - 0.001)
+      selectDay(selectedDay + 1, false);
     const i = frameAt(video.currentTime);
     el.scrubber.value = i;
     el.position.textContent = displayDate(frames[i][0]);
     el.imageDate.textContent = displayDate(frames[i][0]);
     el.frameCount.textContent = `${(i - first + 1).toLocaleString()} / ${(last - first + 1).toLocaleString()}`;
     inspect.href = 'https://raw.githubusercontent.com/fiu-seagrass/tower_data/main/raw_images/' + encodeURIComponent(frames[i][2]);
-    if (video.currentTime >= end - 0.005 && !video.paused) {
+    if (video.currentTime >= playlistEnd - 0.005 && !video.paused) {
       stopPlayback();
       video.currentTime = Math.max(start, end - 1 / fps);
     }
@@ -65,6 +112,16 @@
     const from = el.from.value, to = el.to.value;
     first = frames.findIndex(f => f[0].slice(0, 10) >= from);
     last = frames.findLastIndex(f => f[0].slice(0, 10) <= to);
+    days = [];
+    for (let i = first; i >= 0 && i <= last; i++) {
+      const date = frames[i][0].slice(0, 10);
+      if (!days.length || days.at(-1).date !== date) days.push({ date, first: i, last: i, start: frames[i][1], count: 0 });
+      const day = days.at(-1);
+      day.last = i; day.count++;
+    }
+    const metadata = new Map(dayMetadata.map(day => [day.date, day]));
+    days.forEach(day => { day.end = metadata.get(day.date)?.end ?? frames[day.last][1] + 1 / fps; });
+    renderPlaylist();
     if (from > to || first < 0 || last < first) {
       ready = false;
       el.play.disabled = el.scrubber.disabled = true;
@@ -72,16 +129,10 @@
       return;
     }
     ready = true;
-    start = frames[first][1];
-    end = frames[last][1] + 1 / fps;
+    playlistEnd = days.at(-1).end;
     el.play.disabled = el.scrubber.disabled = false;
-    el.scrubber.min = first;
-    el.scrubber.max = last;
-    el.rangeStart.textContent = from;
-    el.rangeEnd.textContent = to;
-    video.currentTime = start;
+    selectDay(0);
     update();
-    status(`${(last - first + 1).toLocaleString()} frames · HLS streaming · ${Math.round((end - start) / Number(el.speed.value))} seconds at this speed`);
   }
   async function play() {
     if (!ready) return;
@@ -136,6 +187,7 @@
     if (!Array.isArray(index.frames) || !index.frames.length) throw new Error('Empty video timeline');
     frames = index.frames;
     fps = index.fps;
+    dayMetadata = index.days || [];
     el.from.min = el.to.min = frames[0][0].slice(0, 10);
     el.from.max = el.to.max = frames.at(-1)[0].slice(0, 10);
     el.from.value = el.from.min;
