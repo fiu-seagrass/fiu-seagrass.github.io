@@ -16,7 +16,7 @@
   function waitForBuffer(request) {
     if (!hls) return Promise.resolve(); // Safari manages its native HLS buffer.
     return new Promise((resolve, reject) => {
-      const target = Math.max(0, Math.min(12 * video.playbackRate, end - video.currentTime - 0.1));
+      const target = Math.max(0, Math.min(60, 12 * video.playbackRate, end - video.currentTime - 0.1));
       const cleanup = () => { clearInterval(checkTimer); clearTimeout(timeout); };
       const check = () => {
         if (request !== playRequest || !wantsPlayback) { cleanup(); resolve(); return; }
