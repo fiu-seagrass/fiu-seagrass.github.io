@@ -19,6 +19,7 @@
       --shadow: 0 18px 55px rgba(31, 54, 84, .09);
     }
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
     body {
       margin: 0;
       min-height: 100vh;
@@ -159,48 +160,94 @@
       let frames = [];
       let cursor = 0;
       let timer = null;
+      let playing = false;
+      let playbackGeneration = 0;
+      const buffer = new Map();
+      const BUFFER_SIZE = 8;
       let loadSequence = 0;
       const dateOnly = value => value.slice(0, 10);
       const prettyDate = value => new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
       const setStatus = (text, error = false) => { els.status.textContent = text; els.status.classList.toggle("error", error); };
 
       function stop() {
-        if (timer !== null) clearInterval(timer);
+        playing = false;
+        playbackGeneration++;
+        if (timer !== null) clearTimeout(timer);
         timer = null;
         els.playIcon.innerHTML = `<path d="${playPath}"/>`;
         els.playLabel.textContent = "Play";
         els.play.setAttribute("aria-label", "Play timelapse");
       }
 
-      function showFrame(index) {
-        if (!frames.length) return;
-        cursor = Math.max(0, Math.min(frames.length - 1, index));
-        const item = frames[cursor];
-        const seq = ++loadSequence;
-        const url = new URL(item.src, MANIFEST_URL).href;
-        const image = new Image();
-        image.onload = () => {
-          if (seq !== loadSequence) return;
-          els.frame.src = url;
-          els.frame.hidden = false;
-          els.placeholder.hidden = true;
-          els.shade.hidden = false;
-          els.stage.classList.remove("empty");
-          els.imageDate.textContent = prettyDate(item.time);
-          els.frameCount.textContent = `${(cursor + 1).toLocaleString()} / ${frames.length.toLocaleString()}`;
-          els.scrubber.value = cursor;
-          els.position.textContent = prettyDate(item.time);
-        };
-        image.onerror = () => { if (seq === loadSequence) setStatus("Couldn’t load this frame. Check the archive or try another position.", true); };
-        image.src = url;
+      function prepareFrames(index) {
+        const wanted = [];
+        for (let n = 0; n < BUFFER_SIZE; n++) {
+          const i = Math.min(frames.length - 1, index + n * Number(els.step.value));
+          if (!wanted.includes(i)) wanted.push(i);
+        }
+        const keys = new Set(wanted.map(i => frames[i].src));
+        for (const [key, entry] of buffer) {
+          if (!keys.has(key)) { entry.cancel(); buffer.delete(key); }
+        }
+        for (const i of wanted) {
+          const key = frames[i].src;
+          if (buffer.has(key)) continue;
+          const image = new Image();
+          let finish, timeout;
+          const promise = new Promise(resolve => { finish = resolve; });
+          const done = result => {
+            clearTimeout(timeout);
+            image.onload = image.onerror = null;
+            finish(result);
+          };
+          buffer.set(key, { promise, cancel: () => { done(null); image.src = ''; } });
+          timeout = setTimeout(() => { done(null); buffer.delete(key); image.src = ''; }, 20000);
+          image.onload = async () => {
+            try { await image.decode(); done(image); }
+            catch { done(null); buffer.delete(key); }
+          };
+          image.onerror = () => { done(null); buffer.delete(key); };
+          image.src = new URL(key, MANIFEST_URL).href;
+        }
+        return buffer.get(frames[index].src).promise;
+      }
+
+      async function showFrame(index) {
+        if (!frames.length) return false;
+        const target = Math.max(0, Math.min(frames.length - 1, index));
+        const item = frames[target], seq = ++loadSequence;
+        setStatus('Buffering selected frames…');
+        const image = await prepareFrames(target);
+        if (seq !== loadSequence) return false;
+        if (!image) {
+          stop();
+          setStatus('Could not load this frame. Press Play to retry or choose another position.', true);
+          return false;
+        }
+        cursor = target;
+        image.id = 'frame';
+        image.alt = `Tower camera — ${item.time}`;
+        els.frame.replaceWith(image);
+        els.frame = image;
+        els.placeholder.hidden = true;
+        els.shade.hidden = false;
+        els.stage.classList.remove('empty');
+        els.imageDate.textContent = prettyDate(item.time);
+        els.frameCount.textContent = `${(cursor + 1).toLocaleString()} / ${frames.length.toLocaleString()}`;
+        els.scrubber.value = cursor;
+        els.position.textContent = prettyDate(item.time);
+        setStatus(`${frames.length.toLocaleString()} frames · buffering only the next ${BUFFER_SIZE} selected frames`);
+        return true;
       }
 
       function applyRange() {
         stop();
+        loadSequence++;
         const start = els.from.value || dateOnly(allFrames[0].time);
         const end = els.to.value || dateOnly(allFrames[allFrames.length - 1].time);
-        if (start > end) { setStatus("The start date must be before the end date.", true); return; }
+        if (start > end) { frames = []; els.play.disabled = els.scrubber.disabled = true; setStatus("The start date must be before the end date.", true); return; }
         frames = allFrames.filter(frame => dateOnly(frame.time) >= start && dateOnly(frame.time) <= end);
+        els.play.disabled = els.scrubber.disabled = !frames.length;
         if (!frames.length) { setStatus("No frames in that date range. Try expanding the dates."); return; }
         cursor = 0;
         els.scrubber.max = String(frames.length - 1);
@@ -211,24 +258,27 @@
         showFrame(0);
       }
 
-      els.play.addEventListener("click", () => {
+      els.play.addEventListener("click", async () => {
         if (!frames.length) return;
-        if (timer !== null) { stop(); return; }
-        if (cursor >= frames.length - 1) showFrame(0);
+        if (playing) { stop(); loadSequence++; return; }
+        playing = true;
+        const run = ++playbackGeneration;
         els.playIcon.innerHTML = `<path d="${pausePath}"/>`;
         els.playLabel.textContent = "Pause";
         els.play.setAttribute("aria-label", "Pause timelapse");
-        const tick = () => {
+        if (!await showFrame(cursor >= frames.length - 1 ? 0 : cursor)) return;
+        while (playing && run === playbackGeneration) {
+          await new Promise(resolve => setTimeout(resolve, 1000 / Number(els.speed.value)));
+          if (!playing || run !== playbackGeneration) return;
           if (cursor >= frames.length - 1) { stop(); return; }
-          showFrame(Math.min(frames.length - 1, cursor + Number(els.step.value)));
-        };
-        timer = setInterval(tick, 1000 / Number(els.speed.value));
+          if (!await showFrame(Math.min(frames.length - 1, cursor + Number(els.step.value)))) return;
+        }
       });
       els.scrubber.addEventListener("input", () => { stop(); showFrame(Number(els.scrubber.value)); });
       els.from.addEventListener("change", applyRange);
       els.to.addEventListener("change", applyRange);
-      els.speed.addEventListener("change", () => { if (timer !== null) { stop(); els.play.click(); } });
-      els.step.addEventListener("change", () => { if (timer !== null) { stop(); els.play.click(); } });
+
+      els.step.addEventListener("change", () => { const resume = playing; stop(); if (resume) els.play.click(); else showFrame(cursor); });
 
       fetch(MANIFEST_URL)
         .then(response => { if (!response.ok) throw new Error(`Manifest request failed (${response.status})`); return response.json(); })
