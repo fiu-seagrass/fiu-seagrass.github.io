@@ -4,14 +4,40 @@
   const video = document.getElementById('video');
   const inspect = document.getElementById('inspect');
   let frames = [], fps = 30, first = 0, last = 0, start = 0, end = 0, ready = false, hls;
+  let wantsPlayback = false, playRequest = 0;
+  function stopPlayback() { wantsPlayback = false; playRequest++; video.pause(); button(); }
+  function bufferedAhead() {
+    for (let i = 0; i < video.buffered.length; i++) {
+      if (video.buffered.start(i) <= video.currentTime + 0.1 && video.buffered.end(i) > video.currentTime)
+        return video.buffered.end(i) - video.currentTime;
+    }
+    return 0;
+  }
+  function waitForBuffer(request) {
+    if (!hls) return Promise.resolve(); // Safari manages its native HLS buffer.
+    return new Promise((resolve, reject) => {
+      const target = Math.max(0, Math.min(12 * video.playbackRate, end - video.currentTime - 0.1));
+      const cleanup = () => { clearInterval(checkTimer); clearTimeout(timeout); };
+      const check = () => {
+        if (request !== playRequest || !wantsPlayback) { cleanup(); resolve(); return; }
+        const ahead = bufferedAhead();
+        if (ahead + 0.05 >= target) { cleanup(); resolve(); return; }
+        status(`Building a playback buffer: ${Math.floor(ahead)} / ${Math.ceil(target)} seconds…`);
+      };
+      const checkTimer = setInterval(check, 250);
+      const timeout = setTimeout(() => { cleanup(); reject(new Error('Buffering is taking too long. Try 1× playback or reload.')); }, 120000);
+      check();
+    });
+  }
   const status = (message, error = false) => { el.status.textContent = message; el.status.classList.toggle('error', error); };
   const displayDate = t => t.replace('T', ' ') + ' · Eastern time';
   const playPath = 'M6 3.8c0-.7.8-1.1 1.4-.7l9 5.7a1.4 1.4 0 0 1 0 2.4l-9 5.7c-.6.4-1.4 0-1.4-.7V3.8Z';
   const pausePath = 'M5 3h4v14H5zm7 0h4v14h-4z';
   function button() {
-    el.playIcon.innerHTML = `<path d="${video.paused ? playPath : pausePath}"/>`;
-    el.playLabel.textContent = video.paused ? 'Play' : 'Pause';
-    el.play.setAttribute('aria-label', video.paused ? 'Play timelapse' : 'Pause timelapse');
+    const stopped = !wantsPlayback;
+    el.playIcon.innerHTML = `<path d="${stopped ? playPath : pausePath}"/>`;
+    el.playLabel.textContent = stopped ? 'Play' : 'Pause';
+    el.play.setAttribute('aria-label', stopped ? 'Play timelapse' : 'Pause timelapse');
   }
   function frameAt(seconds) {
     let lo = 0, hi = frames.length;
@@ -30,12 +56,12 @@
     el.frameCount.textContent = `${(i - first + 1).toLocaleString()} / ${(last - first + 1).toLocaleString()}`;
     inspect.href = 'https://raw.githubusercontent.com/fiu-seagrass/tower_data/main/raw_images/' + encodeURIComponent(frames[i][2]);
     if (video.currentTime >= end - 0.005 && !video.paused) {
-      video.pause();
+      stopPlayback();
       video.currentTime = Math.max(start, end - 1 / fps);
     }
   }
   function applyRange() {
-    video.pause();
+    stopPlayback();
     const from = el.from.value, to = el.to.value;
     first = frames.findIndex(f => f[0].slice(0, 10) >= from);
     last = frames.findLastIndex(f => f[0].slice(0, 10) <= to);
@@ -59,10 +85,16 @@
   }
   async function play() {
     if (!ready) return;
-    if (!video.paused) { video.pause(); return; }
+    if (wantsPlayback) { stopPlayback(); return; }
+    wantsPlayback = true;
+    const request = ++playRequest;
+    button();
     if (video.currentTime >= end - 1 / fps || video.currentTime < start) video.currentTime = start;
-    try { await video.play(); }
-    catch (error) { status('Playback could not start: ' + error.message, true); button(); }
+    try {
+      await waitForBuffer(request);
+      if (request === playRequest && wantsPlayback) await video.play();
+    }
+    catch (error) { stopPlayback(); status('Playback could not start: ' + error.message, true); button(); }
   }
   el.play.addEventListener('click', play);
   el.speed.addEventListener('change', () => {
@@ -73,14 +105,22 @@
   el.to.addEventListener('change', applyRange);
   // Seek after the user releases the slider; don't download every position while dragging.
   el.scrubber.addEventListener('input', () => {
-    video.pause();
+    stopPlayback();
     el.position.textContent = displayDate(frames[Number(el.scrubber.value)][0]);
   });
   el.scrubber.addEventListener('change', () => { video.currentTime = frames[Number(el.scrubber.value)][1]; update(); });
   video.addEventListener('play', button);
   video.addEventListener('pause', button);
   video.addEventListener('timeupdate', update);
-  video.addEventListener('waiting', () => status('Buffering video segments…'));
+  video.addEventListener('waiting', async () => {
+    if (!wantsPlayback || !hls) { status('Buffering video segments…'); return; }
+    const request = ++playRequest;
+    video.pause();
+    try {
+      await waitForBuffer(request);
+      if (request === playRequest && wantsPlayback) await video.play();
+    } catch (error) { stopPlayback(); status(error.message, true); }
+  });
   video.addEventListener('playing', () => status('Streaming · only nearby video segments are downloaded'));
   video.addEventListener('loadeddata', () => {
     el.placeholder.hidden = true;
@@ -107,9 +147,9 @@
     const source = new URL('./timelapse/hls/index.m3u8', location.href).href;
     if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = source;
     else if (window.Hls && Hls.isSupported()) {
-      hls = new Hls({ maxBufferLength: 30, maxMaxBufferLength: 60, backBufferLength: 15, maxBufferSize: 30 * 1024 * 1024 });
+      hls = new Hls({ startLevel: 0, abrEwmaDefaultEstimate: 200000, maxBufferLength: 90, maxMaxBufferLength: 120, backBufferLength: 15, maxBufferSize: 30 * 1024 * 1024 });
       hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) { video.pause(); status('Streaming error. Reload or use the original image viewer below.', true); }
+        if (data.fatal) { stopPlayback(); status('Streaming error. Reload or use the original image viewer below.', true); }
       });
       hls.loadSource(source);
       hls.attachMedia(video);
