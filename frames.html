@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f7fb">
+  <meta name="description" content="Explore a year of coastal observations, one frame at a time.">
+  <title>Tower Timelapse — FIU Seagrass</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #152238;
+      --muted: #68778d;
+      --line: #e4eaf1;
+      --blue: #1777d2;
+      --blue-dark: #105fae;
+      --surface: #fff;
+      --bg: #f4f7fb;
+      --shadow: 0 18px 55px rgba(31, 54, 84, .09);
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background: radial-gradient(ellipse at 50% -20%, #e4f2ff 0, transparent 50%), var(--bg);
+      font: 15px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .shell { width: min(1060px, calc(100% - 36px)); margin: 0 auto; padding: 34px 0 48px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 26px; }
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 750; letter-spacing: -.02em; }
+    .mark { display:grid; place-items:center; width:40px; height:40px; border-radius:13px; background:#e6f3ff; color:var(--blue); }
+    .brand small { display:block; color:var(--muted); font-size:12px; font-weight:550; letter-spacing:0; }
+    .badge { display:flex; align-items:center; gap:8px; border:1px solid var(--line); border-radius:99px; padding:7px 12px; color:var(--muted); background:rgba(255,255,255,.7); font-size:12px; }
+    .dot { width:7px; height:7px; border-radius:50%; background:#35b779; box-shadow:0 0 0 3px #e5f8ef; }
+    .intro { margin: 0 auto 22px; text-align:center; }
+    h1 { margin:0; font-size:clamp(29px, 5vw, 43px); line-height:1.12; letter-spacing:-.045em; }
+    .intro p { margin:10px 0 0; color:var(--muted); font-size:16px; }
+    .card { overflow:hidden; border:1px solid rgba(218,227,237,.9); border-radius:22px; background:var(--surface); box-shadow:var(--shadow); }
+    .stage { position:relative; display:grid; place-items:center; min-height:300px; aspect-ratio:16/9; background:#101927; overflow:hidden; }
+    .stage img { display:block; width:100%; height:100%; max-height:68vh; object-fit:contain; }
+    .stage.empty { background:linear-gradient(135deg,#172c45,#0d1725); }
+    .placeholder { padding:25px; color:#c8d5e4; text-align:center; }
+    .placeholder svg { margin-bottom:12px; opacity:.9; }
+    .placeholder strong { display:block; color:#fff; font-size:17px; }
+    .placeholder span { display:block; margin-top:5px; font-size:13px; }
+    .image-shade { position:absolute; inset:auto 0 0; display:flex; align-items:end; justify-content:space-between; gap:12px; padding:44px 18px 16px; color:#fff; background:linear-gradient(transparent,rgba(4,12,22,.66)); pointer-events:none; }
+    .image-date { font-size:14px; font-weight:650; text-shadow:0 1px 8px #0008; }
+    .frame-count { font-size:12px; color:#e3ecf6; }
+    .control-panel { padding:21px clamp(16px, 4vw, 32px) 24px; }
+    .toolbar { display:flex; justify-content:center; align-items:center; gap:11px; margin-bottom:20px; }
+    button, select, input { font:inherit; }
+    button { cursor:pointer; }
+    .play { display:flex; align-items:center; justify-content:center; gap:9px; min-width:124px; height:43px; border:0; border-radius:12px; color:#fff; background:var(--blue); box-shadow:0 5px 14px #1777d233; font-weight:700; transition:background .15s, transform .15s; }
+    .play:hover { background:var(--blue-dark); transform:translateY(-1px); }
+    .play:disabled, select:disabled, input:disabled { opacity:.5; cursor:not-allowed; }
+    .select-wrap { display:flex; align-items:center; gap:8px; padding:0 12px; height:43px; border:1px solid var(--line); border-radius:12px; color:var(--muted); background:#fff; font-size:13px; }
+    select { max-width:130px; border:0; outline:0; color:var(--ink); background:transparent; font-size:13px; font-weight:650; cursor:pointer; }
+    .timeline { margin-bottom:17px; }
+    input[type=range] { width:100%; accent-color:var(--blue); cursor:pointer; }
+    .timeline-meta { display:flex; justify-content:space-between; gap:12px; color:var(--muted); font-size:12px; }
+    .range-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .field label { display:block; margin-bottom:6px; color:var(--muted); font-size:12px; font-weight:650; }
+    .field input[type=date] { width:100%; height:41px; padding:0 11px; border:1px solid var(--line); border-radius:10px; color:var(--ink); background:#fff; }
+    .status { min-height:21px; margin-top:13px; color:var(--muted); text-align:center; font-size:12px; }
+    .status.error { color:#b42318; }
+    footer { margin-top:16px; color:#8996a8; text-align:center; font-size:12px; }
+    footer a { color:#60738c; text-decoration:none; }
+    footer a:hover { color:var(--blue); text-decoration:underline; }
+    @media (max-width:620px) {
+      .shell { width:min(100% - 22px,1060px); padding-top:21px; }
+      header { margin-bottom:24px; }
+      .badge { font-size:0; gap:0; width:30px; height:30px; justify-content:center; padding:0; }
+      .dot { width:8px; height:8px; }
+      .intro p { font-size:14px; }
+      .card { border-radius:17px; }
+      .stage { min-height:230px; }
+      .toolbar { gap:8px; }
+      .play { min-width:46px; width:46px; }
+      .play .label { display:none; }
+      .select-wrap { gap:4px; padding:0 8px; }
+      select { max-width:88px; }
+      .range-grid { gap:9px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div class="brand">
+        <div class="mark" aria-hidden="true">
+          <svg width="23" height="23" viewBox="0 0 24 24" fill="none"><path d="M3 17.5c2.2-1.7 4.4-1.7 6.6 0s4.4 1.7 6.6 0 3.3-1.7 4.8-.6M3 12.5c2.2-1.7 4.4-1.7 6.6 0s4.4 1.7 6.6 0 3.3-1.7 4.8-.6M12 3v5m-3-2 3-3 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div>FIU Seagrass<small>Field camera · Tower</small></div>
+      </div>
+      <div class="badge"><span class="dot"></span> Live archive</div>
+    </header>
+
+    <section class="intro">
+      <h1>A year at the water’s edge.</h1>
+      <p>Explore the Tower camera archive at your own pace.</p>
+    </section>
+
+    <section class="card" aria-label="Timelapse viewer">
+      <div class="stage empty" id="stage">
+        <div class="placeholder" id="placeholder">
+          <svg width="44" height="44" viewBox="0 0 48 48" fill="none"><rect x="5" y="9" width="38" height="30" rx="5" stroke="currentColor" stroke-width="2"/><circle cx="18" cy="21" r="4" stroke="currentColor" stroke-width="2"/><path d="m10 34 10-9 7 6 5-5 7 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <strong>Loading the frame archive</strong>
+          <span>Getting the camera timeline ready…</span>
+        </div>
+        <img id="frame" alt="Tower camera frame" hidden>
+        <div class="image-shade" id="shade" hidden>
+          <span class="image-date" id="imageDate"></span>
+          <span class="frame-count" id="frameCount"></span>
+        </div>
+      </div>
+
+      <div class="control-panel">
+        <div class="toolbar">
+          <button class="play" id="play" type="button" disabled aria-label="Play timelapse">
+            <svg id="playIcon" width="17" height="17" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M6 3.8c0-.7.8-1.1 1.4-.7l9 5.7a1.4 1.4 0 0 1 0 2.4l-9 5.7c-.6.4-1.4 0-1.4-.7V3.8Z"/></svg>
+            <span class="label" id="playLabel">Play</span>
+          </button>
+          <label class="select-wrap">Speed
+            <select id="speed" disabled aria-label="Playback speed">
+              <option value="2">2 fps</option><option value="5">5 fps</option><option value="10" selected>10 fps</option><option value="15">15 fps</option><option value="24">24 fps</option><option value="30">30 fps</option>
+            </select>
+          </label>
+          <label class="select-wrap">Step
+            <select id="step" disabled aria-label="Frames to advance each step">
+              <option value="1">Every frame</option><option value="5">5 frames</option><option value="20" selected>20 frames</option><option value="60">60 frames</option><option value="240">240 frames</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="timeline">
+          <input id="scrubber" type="range" min="0" max="0" value="0" disabled aria-label="Frame position">
+          <div class="timeline-meta"><span id="rangeStart">—</span><span id="position">—</span><span id="rangeEnd">—</span></div>
+        </div>
+
+        <div class="range-grid">
+          <div class="field"><label for="from">From</label><input id="from" type="date" disabled></div>
+          <div class="field"><label for="to">To</label><input id="to" type="date" disabled></div>
+        </div>
+        <div class="status" id="status" role="status" aria-live="polite">Loading frame index…</div>
+      </div>
+    </section>
+
+    <footer>Frames are loaded on demand from the <a href="https://github.com/fiu-seagrass/tower_data" target="_blank" rel="noreferrer">public Tower archive</a>.</footer>
+  </main>
+
+  <script>
+    (() => {
+      const MANIFEST_URL = "https://raw.githubusercontent.com/fiu-seagrass/tower_data/main/timelapse/frames.json";
+      const els = Object.fromEntries(["stage", "placeholder", "frame", "shade", "imageDate", "frameCount", "play", "playIcon", "playLabel", "speed", "step", "scrubber", "rangeStart", "rangeEnd", "position", "from", "to", "status"].map(id => [id, document.getElementById(id)]));
+      const playPath = "M6 3.8c0-.7.8-1.1 1.4-.7l9 5.7a1.4 1.4 0 0 1 0 2.4l-9 5.7c-.6.4-1.4 0-1.4-.7V3.8Z";
+      const pausePath = "M5 4.5A1.5 1.5 0 0 1 6.5 3h1A1.5 1.5 0 0 1 9 4.5v11A1.5 1.5 0 0 1 7.5 17h-1A1.5 1.5 0 0 1 5 15.5v-11Zm7 0A1.5 1.5 0 0 1 13.5 3h1A1.5 1.5 0 0 1 16 4.5v11a1.5 1.5 0 0 1-1.5 1.5h-1a1.5 1.5 0 0 1-1.5-1.5v-11Z";
+      let allFrames = [];
+      let frames = [];
+      let cursor = 0;
+      let timer = null;
+      let playing = false;
+      let playbackGeneration = 0;
+      const buffer = new Map();
+      const BUFFER_SIZE = 30;
+      const MAX_DOWNLOADS = 4;
+      let activeDownloads = 0;
+      const downloadQueue = [];
+      function pumpDownloads() {
+        while (activeDownloads < MAX_DOWNLOADS && downloadQueue.length) {
+          const entry = downloadQueue.shift();
+          if (!entry.cancelled) entry.start();
+        }
+      }
+      let loadSequence = 0;
+      const dateOnly = value => value.slice(0, 10);
+      const prettyDate = value => new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
+      const setStatus = (text, error = false) => { els.status.textContent = text; els.status.classList.toggle("error", error); };
+
+      function stop() {
+        playing = false;
+        playbackGeneration++;
+        if (timer !== null) clearTimeout(timer);
+        timer = null;
+        els.playIcon.innerHTML = `<path d="${playPath}"/>`;
+        els.playLabel.textContent = "Play";
+        els.play.setAttribute("aria-label", "Play timelapse");
+      }
+
+      function prepareFrames(index) {
+        const wanted = [];
+        for (let n = 0; n < BUFFER_SIZE; n++) {
+          const i = Math.min(frames.length - 1, index + n * Number(els.step.value));
+          if (!wanted.includes(i)) wanted.push(i);
+        }
+        const keys = new Set(wanted.map(i => frames[i].src));
+        for (const [key, entry] of buffer) {
+          if (!keys.has(key)) { entry.cancel(); buffer.delete(key); }
+        }
+        for (const i of wanted) {
+          const key = frames[i].src;
+          if (buffer.has(key)) continue;
+          const image = new Image();
+          let finish, timeout, finished = false, started = false;
+          const promise = new Promise(resolve => { finish = resolve; });
+          const entry = { promise, cancelled: false };
+          const done = result => {
+            if (finished) return;
+            finished = true;
+            clearTimeout(timeout);
+            image.onload = image.onerror = null;
+            if (started) activeDownloads--;
+            finish(result);
+            queueMicrotask(pumpDownloads);
+          };
+          const discard = () => {
+            if (buffer.get(key) === entry) buffer.delete(key);
+          };
+          entry.cancel = () => { entry.cancelled = true; done(null); if (started) image.src = ''; };
+          entry.start = () => {
+            started = true;
+            activeDownloads++;
+            timeout = setTimeout(() => { done(null); discard(); image.src = ''; }, 20000);
+            image.onload = async () => {
+              try { await image.decode(); done(image); }
+              catch { done(null); discard(); }
+            };
+            image.onerror = () => { done(null); discard(); };
+            image.src = new URL(key, MANIFEST_URL).href;
+          };
+          buffer.set(key, entry);
+          downloadQueue.push(entry);
+        }
+        pumpDownloads();
+        return buffer.get(frames[index].src).promise;
+      }
+
+      async function showFrame(index) {
+        if (!frames.length) return false;
+        const target = Math.max(0, Math.min(frames.length - 1, index));
+        const item = frames[target], seq = ++loadSequence;
+        setStatus('Buffering selected frames…');
+        const image = await prepareFrames(target);
+        if (seq !== loadSequence) return false;
+        if (!image) {
+          stop();
+          setStatus('Could not load this frame. Press Play to retry or choose another position.', true);
+          return false;
+        }
+        cursor = target;
+        image.id = 'frame';
+        image.alt = `Tower camera — ${item.time}`;
+        els.frame.replaceWith(image);
+        els.frame = image;
+        els.placeholder.hidden = true;
+        els.shade.hidden = false;
+        els.stage.classList.remove('empty');
+        els.imageDate.textContent = prettyDate(item.time);
+        els.frameCount.textContent = `${(cursor + 1).toLocaleString()} / ${frames.length.toLocaleString()}`;
+        els.scrubber.value = cursor;
+        els.position.textContent = prettyDate(item.time);
+        setStatus(`${frames.length.toLocaleString()} frames · buffering only the next ${BUFFER_SIZE} selected frames`);
+        return true;
+      }
+
+      function applyRange() {
+        stop();
+        loadSequence++;
+        const start = els.from.value || dateOnly(allFrames[0].time);
+        const end = els.to.value || dateOnly(allFrames[allFrames.length - 1].time);
+        if (start > end) { frames = []; els.play.disabled = els.scrubber.disabled = true; setStatus("The start date must be before the end date.", true); return; }
+        frames = allFrames.filter(frame => dateOnly(frame.time) >= start && dateOnly(frame.time) <= end);
+        els.play.disabled = els.scrubber.disabled = !frames.length;
+        if (!frames.length) { setStatus("No frames in that date range. Try expanding the dates."); return; }
+        cursor = 0;
+        els.scrubber.max = String(frames.length - 1);
+        els.scrubber.value = "0";
+        els.rangeStart.textContent = new Date(start + "T12:00:00").toLocaleDateString(undefined, { dateStyle: "medium" });
+        els.rangeEnd.textContent = new Date(end + "T12:00:00").toLocaleDateString(undefined, { dateStyle: "medium" });
+        setStatus(`${frames.length.toLocaleString()} frames · ${frames[0].time.slice(0, 10)} to ${frames[frames.length - 1].time.slice(0, 10)}`);
+        showFrame(0);
+      }
+
+      els.play.addEventListener("click", async () => {
+        if (!frames.length) return;
+        if (playing) { stop(); loadSequence++; return; }
+        playing = true;
+        const run = ++playbackGeneration;
+        els.playIcon.innerHTML = `<path d="${pausePath}"/>`;
+        els.playLabel.textContent = "Pause";
+        els.play.setAttribute("aria-label", "Pause timelapse");
+        if (!await showFrame(cursor >= frames.length - 1 ? 0 : cursor)) return;
+        while (playing && run === playbackGeneration) {
+          await new Promise(resolve => setTimeout(resolve, 1000 / Number(els.speed.value)));
+          if (!playing || run !== playbackGeneration) return;
+          if (cursor >= frames.length - 1) { stop(); return; }
+          if (!await showFrame(Math.min(frames.length - 1, cursor + Number(els.step.value)))) return;
+        }
+      });
+      els.scrubber.addEventListener("input", () => { stop(); showFrame(Number(els.scrubber.value)); });
+      els.from.addEventListener("change", applyRange);
+      els.to.addEventListener("change", applyRange);
+
+      els.step.addEventListener("change", () => { const resume = playing; stop(); if (resume) els.play.click(); else showFrame(cursor); });
+
+      fetch(MANIFEST_URL)
+        .then(response => { if (!response.ok) throw new Error(`Manifest request failed (${response.status})`); return response.json(); })
+        .then(data => {
+          if (!Array.isArray(data.frames) || !data.frames.length) throw new Error("The frame manifest is empty or invalid.");
+          allFrames = data.frames.filter(item => item && typeof item.time === "string" && typeof item.src === "string").sort((a, b) => a.time.localeCompare(b.time));
+          if (!allFrames.length) throw new Error("No usable frames were found in the manifest.");
+          els.from.min = els.to.min = dateOnly(allFrames[0].time);
+          els.from.max = els.to.max = dateOnly(allFrames[allFrames.length - 1].time);
+          els.from.value = els.from.min;
+          els.to.value = els.to.max;
+          [els.play, els.speed, els.step, els.scrubber, els.from, els.to].forEach(control => control.disabled = false);
+          applyRange();
+        })
+        .catch(error => {
+          els.placeholder.querySelector("strong").textContent = "The frame archive couldn’t load";
+          els.placeholder.querySelector("span").textContent = error.message;
+          setStatus("Could not load the public frame manifest.", true);
+        });
+    })();
+  </script>
+</body>
+</html>
