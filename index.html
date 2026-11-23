@@ -163,7 +163,16 @@
       let playing = false;
       let playbackGeneration = 0;
       const buffer = new Map();
-      const BUFFER_SIZE = 8;
+      const BUFFER_SIZE = 30;
+      const MAX_DOWNLOADS = 4;
+      let activeDownloads = 0;
+      const downloadQueue = [];
+      function pumpDownloads() {
+        while (activeDownloads < MAX_DOWNLOADS && downloadQueue.length) {
+          const entry = downloadQueue.shift();
+          if (!entry.cancelled) entry.start();
+        }
+      }
       let loadSequence = 0;
       const dateOnly = value => value.slice(0, 10);
       const prettyDate = value => new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
@@ -193,22 +202,37 @@
           const key = frames[i].src;
           if (buffer.has(key)) continue;
           const image = new Image();
-          let finish, timeout;
+          let finish, timeout, finished = false, started = false;
           const promise = new Promise(resolve => { finish = resolve; });
+          const entry = { promise, cancelled: false };
           const done = result => {
+            if (finished) return;
+            finished = true;
             clearTimeout(timeout);
             image.onload = image.onerror = null;
+            if (started) activeDownloads--;
             finish(result);
+            queueMicrotask(pumpDownloads);
           };
-          buffer.set(key, { promise, cancel: () => { done(null); image.src = ''; } });
-          timeout = setTimeout(() => { done(null); buffer.delete(key); image.src = ''; }, 20000);
-          image.onload = async () => {
-            try { await image.decode(); done(image); }
-            catch { done(null); buffer.delete(key); }
+          const discard = () => {
+            if (buffer.get(key) === entry) buffer.delete(key);
           };
-          image.onerror = () => { done(null); buffer.delete(key); };
-          image.src = new URL(key, MANIFEST_URL).href;
+          entry.cancel = () => { entry.cancelled = true; done(null); if (started) image.src = ''; };
+          entry.start = () => {
+            started = true;
+            activeDownloads++;
+            timeout = setTimeout(() => { done(null); discard(); image.src = ''; }, 20000);
+            image.onload = async () => {
+              try { await image.decode(); done(image); }
+              catch { done(null); discard(); }
+            };
+            image.onerror = () => { done(null); discard(); };
+            image.src = new URL(key, MANIFEST_URL).href;
+          };
+          buffer.set(key, entry);
+          downloadQueue.push(entry);
         }
+        pumpDownloads();
         return buffer.get(frames[index].src).promise;
       }
 
