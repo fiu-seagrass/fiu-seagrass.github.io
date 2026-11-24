@@ -3,6 +3,13 @@
   const el = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
   const video = document.getElementById('video');
   const inspect = document.getElementById('inspect');
+  const quality = document.getElementById('quality');
+  const sourceForQuality = () => new URL('./timelapse/hls/' + ({ high: '720p.m3u8', low: '360p.m3u8', auto: 'index.m3u8' }[quality.value] || '720p.m3u8'), location.href).href;
+  function setHlsQuality() {
+    if (quality.value === 'auto') { hls.currentLevel = -1; return; }
+    const sorted = hls.levels.map((level, i) => ({ height: level.height, i })).sort((a, b) => a.height - b.height);
+    if (sorted.length) hls.currentLevel = (quality.value === 'low' ? sorted[0] : sorted.at(-1)).i;
+  }
   let frames = [], fps = 30, first = 0, last = 0, start = 0, end = 0, ready = false, hls;
   let wantsPlayback = false, playRequest = 0;
   let days = [], dayButtons = [], selectedDay = 0, playlistEnd = 0, dayMetadata = [];
@@ -148,6 +155,25 @@
     catch (error) { stopPlayback(); status('Playback could not start: ' + error.message, true); button(); }
   }
   el.play.addEventListener('click', play);
+  quality.addEventListener('change', () => {
+    if (hls) {
+      setHlsQuality();
+    } else {
+      // Native Safari HLS: select the rendition playlist and restore position/rate.
+      const position = video.currentTime, rate = video.playbackRate, resume = wantsPlayback;
+      stopPlayback();
+      quality.disabled = true;
+      video.addEventListener('loadedmetadata', () => {
+        video.currentTime = position;
+        video.playbackRate = rate;
+        quality.disabled = false;
+        if (resume) play();
+      }, { once: true });
+      video.src = sourceForQuality();
+      video.load();
+    }
+    status(quality.value === 'auto' ? 'Auto quality · adapts to bandwidth' : `Quality locked to ${quality.value === 'high' ? '720p' : '360p'} · choose Auto if playback buffers`);
+  });
   el.speed.addEventListener('change', () => {
     video.playbackRate = Number(el.speed.value);
     status(`Playback speed ${el.speed.value}× · HLS buffers upcoming video segments automatically`);
@@ -197,9 +223,16 @@
       applyRange();
     }, { once: true });
     const source = new URL('./timelapse/hls/index.m3u8', location.href).href;
-    if (video.canPlayType('application/vnd.apple.mpegurl')) video.src = source;
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      quality.disabled = false;
+      video.src = sourceForQuality();
+    }
     else if (window.Hls && Hls.isSupported()) {
-      hls = new Hls({ startLevel: 0, abrEwmaDefaultEstimate: 200000, maxBufferLength: 90, maxMaxBufferLength: 120, backBufferLength: 15, maxBufferSize: 30 * 1024 * 1024 });
+      hls = new Hls({ startLevel: 1, abrEwmaDefaultEstimate: 200000, maxBufferLength: 90, maxMaxBufferLength: 120, backBufferLength: 15, maxBufferSize: 30 * 1024 * 1024 });
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        setHlsQuality();
+        quality.disabled = false;
+      });
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) { stopPlayback(); status('Streaming error. Reload or use the original image viewer below.', true); }
       });
