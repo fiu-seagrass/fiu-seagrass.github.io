@@ -1367,4 +1367,11 @@
 2026-11-26-c1ad642e2224/low/segment_0001.ts
 #EXTINF:3.066667,
 2026-11-26-c1ad642e2224/low/segment_0002.ts
+#EXT-X-DISCONTINUITY
+#EXTINF:4.000000,
+2026-11-27-07d4fbeeccd8/low/segment_0000.ts
+#EXTINF:4.000000,
+2026-11-27-07d4fbeeccd8/low/segment_0001.ts
+#EXTINF:3.133333,
+2026-11-27-07d4fbeeccd8/low/segment_0002.ts
 #EXT-X-ENDLIST
